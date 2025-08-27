@@ -176,26 +176,21 @@ class PoleEvaluation:
         if type(position) is PositionObj:
             position = position.position
         empty_fields = position.count('')
-
-        if empty_fields > 4:
-            return None
-
-        # if "x" won, then it will be 10, if "o" won it will be -10
-        eval_if_somebody_won = (10, -10)[empty_fields % 2 == 1]
+        evals = {'x': 10, 'o': -10}
 
         for index in (0, 1, 2):
             if '' != position[index] == position[index + 3] == position[index + 6]:
-                return eval_if_somebody_won
+                return evals[position[index]]
 
         for index in (0, 3, 6):
             if '' != position[index] == position[index + 1] == position[index + 2]:
-                return eval_if_somebody_won
+                return evals[position[index]]
 
         for index in (2, 4):
             if '' != position[4 - index] == position[4] == position[4 + index]:
-                return eval_if_somebody_won
+                return evals[position[4]]
 
-        if position.count('') == 0:
+        if empty_fields == 0:
             return 0
 
         return None
@@ -223,6 +218,24 @@ class PoleEvaluation:
             position[index] = ''
 
         return max(all_possible_moves) / 2 if min_or_max == 'max' else min(all_possible_moves) / 2
+    
+    
+    def get_right_human_like_indexes(self, position, field_value):
+        empty_poles = [i for i in range(9) if position[i] == '']
+        good_indexes = set()
+        for indx1 in empty_poles:
+            for indx2 in empty_poles:
+                if indx1 == indx2:
+                    continue
+                position[indx1] = field_value
+                position[indx2] = field_value
+                if self.evaluate_pole_if_game_ended(position) in (-10, 10):
+                    good_indexes.add(indx1)
+                    good_indexes.add(indx2)
+                position[indx1] = ''
+                position[indx2] = ''
+        return good_indexes
+    
 
     def get_right_move_indexes(self, level, position=None):
         if position is None:
@@ -239,9 +252,11 @@ class PoleEvaluation:
 
         field_value, non_min_or_max, min_or_max = ('x', 'min', 'max') if position.count('') % 2 == 1 else ('o', 'max', 'min')
         not_field_value = 'x' if field_value == 'o' else 'o'
-
-        # find the best move in depth one naturally like human
+        
+        human_like = self.get_right_human_like_indexes(position, field_value) if position.count('') in (3, 4, 5) else set()  # humanizing engine
+        
         if level != 'easy':
+            # humanizing engine
             for possible_value in (field_value, not_field_value):
                 for index in range(9):
                     if position[index] != '':
@@ -252,24 +267,12 @@ class PoleEvaluation:
                     position[index] = ''
                 if good_indexes:
                     break
-            if level in ('hard', 'impossible') and self.evaluate_position(position, min_or_max, max_depth=max_depth_from_level[level] - 1) == 0 and not good_indexes and position.count('') == 3:
-                empty_poles = [i for i in range(9) if position[i] == '']
-                good_indexes = set()
-                for indx1 in empty_poles:
-                    for indx2 in empty_poles:
-                        if indx1 == indx2:
-                            continue
-                        position[indx1] = field_value
-                        position[indx2] = field_value
-                        if self.evaluate_pole_if_game_ended(position) in (-10, 10):
-                            good_indexes.add(indx1)
-                            good_indexes.add(indx2)
-                        position[indx1] = ''
-                        position[indx2] = ''
-                return list(good_indexes)
-            elif good_indexes:
+            intersected_good_indexes = list(human_like & set(good_indexes))
+            if self.evaluate_position(position, min_or_max, max_depth=max_depth_from_level[level] - 1) == 0 and intersected_good_indexes:
+                return intersected_good_indexes
+            if good_indexes:
                 return good_indexes
-
+            
         for index in range(9):
             if position[index] != '':
                 continue
@@ -285,7 +288,11 @@ class PoleEvaluation:
         for key in next_position_from_index:
             if next_position_from_index[key] == extreme_value:
                 good_indexes.append(key)
-        return good_indexes
+        intersected_good_indexes = list(human_like & set(good_indexes))
+        if level in ('hard', 'impossible') and self.evaluate_position(position, min_or_max, max_depth=max_depth_from_level[level] - 1) == 0 and intersected_good_indexes:
+            return intersected_good_indexes
+        if good_indexes:
+            return good_indexes
 
 
 pole_evaluation = PoleEvaluation()
@@ -606,7 +613,7 @@ class Picture:
         for index, move_index in enumerate(settings.best_moves):
             x_coord += 40
 
-            recommended_move_by_computer = evaluation_font.render(f'{('C', 'B', 'A')[move_index // 3]}{move_index % 3 + 1}' if move_index is not None else '__', 1, 'yellow')
+            recommended_move_by_computer = evaluation_font.render(f'{('C', 'B', 'A')[2 - move_index % 3]}{4 - (move_index // 3 + 1)}' if move_index is not None else '__', 1, 'yellow')
 
             screen.blit(recommended_move_by_computer, (x_coord, 645))
             if index:
@@ -724,7 +731,7 @@ class Picture:
         tic_tac_toe_pole.draw()
         for row in range(3):
             for column in range(3):
-                screen.blit(notation_font.render(f'{('C', 'B', 'A')[column]}{row + 1}', 1, DARK_GREEN), (10 + row * 140, 112 + column * 140))
+                screen.blit(notation_font.render(f'{('C', 'B', 'A')[2 - row]}{4 - (column + 1)}', 1, DARK_GREEN), (10 + row * 140, 112 + column * 140))
 
         pygame.draw.rect(screen, color=LIGHT_GRAY, rect=(180, 475, 120, 50))  # start button rect
         screen.blit(game_result_font.render('Start!', 1, 'white'), (185, 470))
